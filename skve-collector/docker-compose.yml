@@ -1,0 +1,79 @@
+# SKVE Collector – Portainer-Stack
+# Deploy in Portainer: Stacks → Add stack → "Repository" → dieses Git-Repo,
+# Compose-Pfad: docker-compose.yml. Die Variablen unten im Portainer-Feld
+# "Environment variables" setzen (mindestens SKVE_API_KEY und die Passwörter).
+#
+# Nur lesende API-Nutzung. Der VPP-/POST-Schreibpfad wird nicht verwendet.
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: skve-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-skve}
+      POSTGRES_USER: ${DB_USER:-skve}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?bitte DB_PASSWORD in Portainer setzen}
+    volumes:
+      - skve_db:/var/lib/postgresql/data
+      # init.sql läuft nur beim allerersten Start (leeres Volume)
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-skve} -d ${DB_NAME:-skve}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Kein Port nach außen nötig – nur Grafana & Collector greifen intern zu.
+    # Zum Anbinden von Power BI aus dem LAN die nächste Zeile einkommentieren:
+    # ports: ["5432:5432"]
+
+  collector:
+    build: ./collector
+    image: skve-collector:latest
+    container_name: skve-collector
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      SKVE_API_KEY: ${SKVE_API_KEY:?bitte SKVE_API_KEY in Portainer setzen}
+      SKVE_API_BASE: ${SKVE_API_BASE:-https://www.speicher-kraftwerk.de/api}
+      SKVE_CHP_IDS: ${SKVE_CHP_IDS:-499,500,501,502}
+      SKVE_PRICE_SERIES: ${SKVE_PRICE_SERIES:-DAA,IDA}
+      SKVE_FORECAST_MARKETS: ${SKVE_FORECAST_MARKETS:-DAA}
+      SKVE_INITIAL_START_DATE: ${SKVE_INITIAL_START_DATE:-}
+      RUN_INTERVAL_SEC: ${RUN_INTERVAL_SEC:-86400}
+      RUN_ONCE: ${RUN_ONCE:-false}
+      OVERLAP_HOURS: ${OVERLAP_HOURS:-6}
+      FUTURE_HORIZON_DAYS: ${FUTURE_HORIZON_DAYS:-2}
+      BACKFILL_FALLBACK_DAYS: ${BACKFILL_FALLBACK_DAYS:-3}
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-skve}
+      DB_USER: ${DB_USER:-skve}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: skve-grafana
+    restart: unless-stopped
+    depends_on:
+      - timescaledb
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:?bitte GF_ADMIN_PASSWORD in Portainer setzen}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Datenquelle-Passwort für die Provisioning-Datei
+      DB_NAME: ${DB_NAME:-skve}
+      DB_USER: ${DB_USER:-skve}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${GF_PORT:-3000}:3000"     # im LAN erreichbar: http://<raspi-ip>:3000
+    volumes:
+      - skve_grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  skve_db:
+  skve_grafana:
