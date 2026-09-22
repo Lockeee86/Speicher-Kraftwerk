@@ -62,7 +62,7 @@ FUTURE_HORIZON_DAYS = int(os.environ.get("FUTURE_HORIZON_DAYS", "2"))
 # Maximale Fenstergröße pro API-Abfrage (Tage). Größere Zeiträume werden in
 # Stücke dieser Länge zerlegt – die API liefert mehr als ~1 Monat am Stück
 # nicht zuverlässig. Gilt auch für den Backfill.
-MAX_CHUNK_DAYS = int(os.environ.get("MAX_CHUNK_DAYS", "31"))
+MAX_CHUNK_DAYS = int(os.environ.get("MAX_CHUNK_DAYS", "14"))
 
 # Kurze Pause zwischen zwei Chunks, um die API nicht zu überlasten (Sekunden).
 CHUNK_PAUSE_SEC = float(os.environ.get("CHUNK_PAUSE_SEC", "0.5"))
