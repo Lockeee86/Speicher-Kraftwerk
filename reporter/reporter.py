@@ -37,8 +37,14 @@ DB_PASS = os.environ.get("DB_PASSWORD", "skve")
 
 TZ = ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))
 
-# Wochentag + Uhrzeit des Reports (lokale Zeit). Wochentag: Mo=0 … So=6.
-REPORT_WEEKDAY = int(os.environ.get("REPORT_WEEKDAY", "0"))  # Montag
+# Wochentag(e) + Uhrzeit des Reports (lokale Zeit). Wochentag: Mo=0 … So=6.
+# Mehrere möglich, kommagetrennt – z.B. "0,2,4" für Mo/Mi/Fr.
+def _parse_weekdays(s: str):
+    days = sorted({int(x.strip()) for x in s.split(",")
+                   if x.strip().isdigit() and 0 <= int(x.strip()) <= 6})
+    return days or [0]
+
+REPORT_WEEKDAYS = _parse_weekdays(os.environ.get("REPORT_WEEKDAY", "0"))
 REPORT_HOUR = int(os.environ.get("REPORT_HOUR", "8"))
 REPORT_MINUTE = int(os.environ.get("REPORT_MINUTE", "0"))
 # Einmal laufen und beenden (zum Testen).
@@ -405,18 +411,21 @@ _WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
 
 def seconds_until_next_run() -> float:
     now = datetime.now(TZ)
-    target = now.replace(hour=REPORT_HOUR, minute=REPORT_MINUTE, second=0, microsecond=0)
-    days_ahead = (REPORT_WEEKDAY - now.weekday()) % 7
-    if days_ahead == 0 and target <= now:
-        days_ahead = 7
-    target += timedelta(days=days_ahead)
-    return (target - now).total_seconds()
+    base = now.replace(hour=REPORT_HOUR, minute=REPORT_MINUTE, second=0, microsecond=0)
+    best = None
+    for wd in REPORT_WEEKDAYS:
+        target = base + timedelta(days=(wd - now.weekday()) % 7)
+        if target <= now:
+            target += timedelta(days=7)
+        s = (target - now).total_seconds()
+        best = s if best is None else min(best, s)
+    return best
 
 
 def main():
-    tag = _WOCHENTAGE[REPORT_WEEKDAY % 7]
-    log.info("SKVE Reporter startet. Wochenreport %s %02d:%02d (%s), Modell=%s.",
-             tag, REPORT_HOUR, REPORT_MINUTE, TZ.key, REPORT_MODEL)
+    tage = ", ".join(_WOCHENTAGE[d] for d in REPORT_WEEKDAYS)
+    log.info("SKVE Reporter startet. Report %s %02d:%02d (%s), Modell=%s.",
+             tage, REPORT_HOUR, REPORT_MINUTE, TZ.key, REPORT_MODEL)
     if RUN_ONCE:
         try:
             run_once()
