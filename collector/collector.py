@@ -96,6 +96,77 @@ def connect_db(retries: int = 10, delay: int = 3):
     raise SystemExit(f"DB nicht erreichbar: {last}")
 
 
+# Datenbankschema (idempotent). Wird bei jedem Start sichergestellt, damit der
+# Collector nicht auf ein einmalig laufendes init.sql angewiesen ist – wichtig
+# u.a. in Portainer/dind-Setups, in denen Bind-Mounts aus dem Git-Repo nicht
+# ankommen. Deckungsgleich mit db/init.sql.
+SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+CREATE TABLE IF NOT EXISTS prices (
+    ts        TIMESTAMPTZ   NOT NULL,
+    series    TEXT          NOT NULL,
+    eur_mwh   DOUBLE PRECISION,
+    PRIMARY KEY (ts, series)
+);
+SELECT create_hypertable('prices', 'ts', if_not_exists => TRUE);
+
+CREATE TABLE IF NOT EXISTS chp_schedule (
+    ts        TIMESTAMPTZ   NOT NULL,
+    chp_id    INTEGER       NOT NULL,
+    kw        DOUBLE PRECISION,
+    PRIMARY KEY (ts, chp_id)
+);
+SELECT create_hypertable('chp_schedule', 'ts', if_not_exists => TRUE);
+
+CREATE TABLE IF NOT EXISTS chp_master (
+    chp_id    INTEGER PRIMARY KEY,
+    name      TEXT NOT NULL,
+    section   TEXT NOT NULL,
+    nenn_kw   INTEGER NOT NULL
+);
+
+INSERT INTO chp_master (chp_id, name, section, nenn_kw) VALUES
+    (499, '4. Jenb. 901 S',        'Satellit',      901),
+    (500, '3. Jenb. 548',          'Hauptstandort', 548),
+    (501, '2. MWM 400 S',          'Satellit',      390),
+    (502, '1. MAN 252',            'Hauptstandort', 252)
+ON CONFLICT (chp_id) DO UPDATE
+    SET name = EXCLUDED.name,
+        section = EXCLUDED.section,
+        nenn_kw = EXCLUDED.nenn_kw;
+
+CREATE TABLE IF NOT EXISTS ingest_state (
+    stream        TEXT PRIMARY KEY,
+    last_ts       TIMESTAMPTZ,
+    last_run      TIMESTAMPTZ,
+    last_status   TEXT
+);
+
+CREATE OR REPLACE VIEW v_erloes AS
+SELECT
+    s.ts,
+    s.chp_id,
+    m.name,
+    m.section,
+    s.kw,
+    p.eur_mwh,
+    s.kw * 0.25 / 1000.0 * p.eur_mwh AS erloes_eur,
+    s.kw * 0.25 / 1000.0             AS mwh
+FROM chp_schedule s
+JOIN chp_master m ON m.chp_id = s.chp_id
+LEFT JOIN prices p ON p.ts = s.ts AND p.series = 'DAA';
+"""
+
+
+def ensure_schema(conn):
+    """Legt Tabellen/Views idempotent an. Läuft bei jedem Start."""
+    with conn.cursor() as cur:
+        cur.execute(SCHEMA_SQL)
+    conn.commit()
+    log.info("DB-Schema sichergestellt (Tabellen/Views vorhanden).")
+
+
 def api_get(path: str, start: datetime, end: datetime) -> dict:
     """GET mit x-api-key. Gibt geparstes JSON zurück oder wirft."""
     url = f"{API_BASE}{path}"
@@ -268,6 +339,7 @@ def main():
     log.info("SKVE Collector startet. Basis=%s  Motoren=%s  Preise=%s",
              API_BASE, CHP_IDS, PRICE_SERIES)
     conn = connect_db()
+    ensure_schema(conn)
 
     while True:
         t0 = time.time()
