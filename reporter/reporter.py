@@ -415,7 +415,14 @@ def main():
             run_once()
         except Exception as e:
             log.exception("Report fehlgeschlagen: %s", e)
-        return
+        # Nicht beenden: sonst würde 'restart: unless-stopped' den Container
+        # sofort neu starten und den Report in Dauerschleife feuern. Stattdessen
+        # idle bleiben, bis RUN_ONCE wieder auf false steht und neu deployt wird.
+        log.info("Testlauf fertig. RUN_ONCE=true → Container idlet (kein weiterer "
+                 "Report). Für den Normalbetrieb REPORT_RUN_ONCE=false setzen und "
+                 "neu deployen.")
+        while True:
+            time.sleep(3600)
     while True:
         wait = seconds_until_next_run()
         log.info("Nächster Report in %.1f Tagen.", wait / 86400.0)
