@@ -159,7 +159,7 @@
             "uid": "skve-tsdb"
           },
           "format": "table",
-          "rawSql": "SELECT max(ts) FROM chp_schedule",
+          "rawSql": "SELECT extract(epoch from max(last_run)) * 1000 AS \"Letzter Datenstand\" FROM ingest_state",
           "rawQuery": true
         }
       ],
