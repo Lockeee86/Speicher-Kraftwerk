@@ -59,6 +59,19 @@ OVERLAP_HOURS = int(os.environ.get("OVERLAP_HOURS", "6"))
 # Wie weit maximal in die Zukunft ziehen (Fahrpläne/Prognose liegen voraus).
 FUTURE_HORIZON_DAYS = int(os.environ.get("FUTURE_HORIZON_DAYS", "2"))
 
+# Maximale Fenstergröße pro API-Abfrage (Tage). Größere Zeiträume werden in
+# Stücke dieser Länge zerlegt – die API liefert mehr als ~1 Monat am Stück
+# nicht zuverlässig. Gilt auch für den Backfill.
+MAX_CHUNK_DAYS = int(os.environ.get("MAX_CHUNK_DAYS", "31"))
+
+# Kurze Pause zwischen zwei Chunks, um die API nicht zu überlasten (Sekunden).
+CHUNK_PAUSE_SEC = float(os.environ.get("CHUNK_PAUSE_SEC", "0.5"))
+
+# Einmaliger Backfill ab diesem Datum (YYYY-MM-DD). Wenn gesetzt, wird der
+# gespeicherte Fortschritt ignoriert und ab hier neu geladen (idempotent).
+# Nach abgeschlossenem Backfill wieder leeren, damit der normale Betrieb greift.
+BACKFILL_FROM = os.environ.get("SKVE_BACKFILL_FROM", "").strip()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
@@ -203,6 +216,11 @@ def set_state(cur, stream: str, last_ts, status: str):
 
 def window_for(cur, stream: str):
     """Berechne (start, end) für den nächsten Abruf eines Streams."""
+    end = now_utc() + timedelta(days=FUTURE_HORIZON_DAYS)
+    # Einmaliger Backfill: ignoriert den gespeicherten Fortschritt.
+    if BACKFILL_FROM:
+        start = datetime.fromisoformat(BACKFILL_FROM).replace(tzinfo=timezone.utc)
+        return start, end
     last_ts = get_state(cur, stream)
     if last_ts is None:
         if INITIAL_START_DATE:
@@ -211,8 +229,20 @@ def window_for(cur, stream: str):
             start = now_utc() - timedelta(days=BACKFILL_FALLBACK_DAYS)
     else:
         start = last_ts - timedelta(hours=OVERLAP_HOURS)
-    end = now_utc() + timedelta(days=FUTURE_HORIZON_DAYS)
     return start, end
+
+
+def daterange_chunks(start: datetime, end: datetime, days: int):
+    """Zerlegt [start, end) in Stücke von höchstens `days` Tagen."""
+    if days <= 0:
+        yield start, end
+        return
+    step = timedelta(days=days)
+    cur = start
+    while cur < end:
+        nxt = min(cur + step, end)
+        yield cur, nxt
+        cur = nxt
 
 
 # --------------------------------------------------------------------------- #
@@ -269,6 +299,38 @@ def upsert_chp(cur, chp_id: int, rows):
 
 
 # --------------------------------------------------------------------------- #
+# Ein Stream, chunk-weise geladen (fortsetzbar)
+# --------------------------------------------------------------------------- #
+def fetch_stream(conn, cur, stream, path, upsert_fn, label):
+    """Lädt einen Datenstrom im Zeitfenster in Stücken von MAX_CHUNK_DAYS.
+
+    Nach jedem Chunk wird committet und der Fortschritt gespeichert – bricht ein
+    langer Backfill ab, macht der nächste Lauf beim letzten Chunk weiter.
+    Gibt (Gesamtanzahl, letzter_zeitstempel) zurück.
+    """
+    start, end = window_for(cur, stream)
+    total = 0
+    last_overall = get_state(cur, stream)
+    chunks = list(daterange_chunks(start, end, MAX_CHUNK_DAYS))
+    multi = len(chunks) > 1
+    for i, (cs, ce) in enumerate(chunks):
+        payload = api_get(path, cs, ce)
+        rows = extract_series(payload)
+        n, last = upsert_fn(cur, rows)
+        total += n
+        if last and (last_overall is None or last > last_overall):
+            last_overall = last
+        set_state(cur, stream, last_overall, "ok")
+        conn.commit()
+        if multi:
+            log.info("  %-14s Chunk %2d/%d  %s–%s → %5d Werte",
+                     label, i + 1, len(chunks), cs.date(), ce.date(), n)
+            if CHUNK_PAUSE_SEC and i < len(chunks) - 1:
+                time.sleep(CHUNK_PAUSE_SEC)
+    return total, last_overall
+
+
+# --------------------------------------------------------------------------- #
 # Ein kompletter Durchlauf
 # --------------------------------------------------------------------------- #
 def run_once(conn):
@@ -278,13 +340,12 @@ def run_once(conn):
     for series in PRICE_SERIES:
         stream = f"price:{series}"
         try:
-            start, end = window_for(cur, stream)
-            payload = api_get(f"/module/data-service/prices/{series}", start, end)
-            rows = extract_series(payload)
-            n, last = upsert_prices(cur, series, rows)
-            set_state(cur, stream, last, "ok")
-            conn.commit()
-            log.info("Preise %-4s: %4d Werte (bis %s)", series, n,
+            n, last = fetch_stream(
+                conn, cur, stream, f"/module/data-service/prices/{series}",
+                lambda c, rows, s=series: upsert_prices(c, s, rows),
+                f"Preise {series}",
+            )
+            log.info("Preise %-4s: %5d Werte (bis %s)", series, n,
                      last.isoformat() if last else "—")
         except Exception as e:
             conn.rollback()
@@ -297,13 +358,12 @@ def run_once(conn):
         stream = f"forecast:{market}"
         series = f"FORECAST_{market}"
         try:
-            start, end = window_for(cur, stream)
-            payload = api_get(f"/module/data-service/prices/forecast/{market}", start, end)
-            rows = extract_series(payload)
-            n, last = upsert_prices(cur, series, rows)
-            set_state(cur, stream, last, "ok")
-            conn.commit()
-            log.info("Prognose %-4s: %4d Werte (bis %s)", market, n,
+            n, last = fetch_stream(
+                conn, cur, stream, f"/module/data-service/prices/forecast/{market}",
+                lambda c, rows, s=series: upsert_prices(c, s, rows),
+                f"Prognose {market}",
+            )
+            log.info("Prognose %-4s: %5d Werte (bis %s)", market, n,
                      last.isoformat() if last else "—")
         except Exception as e:
             conn.rollback()
@@ -315,13 +375,12 @@ def run_once(conn):
     for chp_id in CHP_IDS:
         stream = f"chp:{chp_id}"
         try:
-            start, end = window_for(cur, stream)
-            payload = api_get(f"/module/data-service/chp/{chp_id}/schedule", start, end)
-            rows = extract_series(payload)
-            n, last = upsert_chp(cur, chp_id, rows)
-            set_state(cur, stream, last, "ok")
-            conn.commit()
-            log.info("Fahrplan %d: %4d Werte (bis %s)", chp_id, n,
+            n, last = fetch_stream(
+                conn, cur, stream, f"/module/data-service/chp/{chp_id}/schedule",
+                lambda c, rows, cid=chp_id: upsert_chp(c, cid, rows),
+                f"Fahrplan {chp_id}",
+            )
+            log.info("Fahrplan %d: %5d Werte (bis %s)", chp_id, n,
                      last.isoformat() if last else "—")
         except Exception as e:
             conn.rollback()

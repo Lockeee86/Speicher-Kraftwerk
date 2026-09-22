@@ -47,12 +47,34 @@ Doppelläufe erzeugen also keine Duplikate.
 
 - Standard: Der Collector startet und holt die letzten `BACKFILL_FALLBACK_DAYS`
   Tage, danach täglich das Neue.
-- Möchtest du beim ersten Mal weiter zurück laden, setze einmalig
-  `SKVE_INITIAL_START_DATE=2026-01-01`, deploye, lass einen Lauf durch, entferne
-  die Variable wieder. (Große Zeiträume kann die API begrenzen – im Zweifel in
-  Etappen, z. B. monatsweise, das Startdatum schrittweise vorziehen.)
 - Test-Lauf ohne 24 h warten: `RUN_ONCE=true` setzen und den `collector`-Container
   neu starten – er läuft einmal durch und beendet sich; im Log siehst du die Zahlen.
+
+## Historische Daten nachladen (Backfill)
+
+Die API liefert große Zeiträume nicht am Stück – der Collector zerlegt sie daher
+automatisch in Stücke von `MAX_CHUNK_DAYS` (Standard 31) und lädt sie nacheinander.
+Der Fortschritt wird **pro Chunk** gespeichert; bricht ein langer Lauf ab, macht
+der nächste dort weiter. Alles idempotent (`UPSERT`), es entstehen keine Duplikate.
+
+**Ganzes Jahr 2026 laden:**
+
+1. In Portainer beim Stack die Variable setzen: `SKVE_BACKFILL_FROM=2026-01-01`
+2. Stack neu deployen (bzw. `collector` neu starten). Der Collector läuft dann
+   Monat für Monat rückwärts bis heute durch – im Log siehst du z. B.:
+   ```
+   Preise DAA     Chunk  1/9  2026-01-01–2026-02-01 →  2976 Werte
+   Preise DAA     Chunk  2/9  2026-02-01–2026-03-04 →  2880 Werte
+   ...
+   ```
+3. Wenn der Lauf fertig ist (alle Streams „… Werte (bis …)"), die Variable
+   `SKVE_BACKFILL_FROM` **wieder entfernen/leeren** und den Stack neu deployen –
+   danach läuft der normale tägliche Betrieb weiter.
+
+Tipp: Für einen reinen Backfill zusätzlich `RUN_ONCE=true` setzen, dann läuft der
+Collector einmal komplett durch und beendet sich. Dauert der Backfill lange oder
+läuft die API ins Limit, `MAX_CHUNK_DAYS` verkleinern (z. B. 14) und/oder
+`CHUNK_PAUSE_SEC` erhöhen (z. B. 2).
 
 ## Prüfen, ob Daten ankommen
 
