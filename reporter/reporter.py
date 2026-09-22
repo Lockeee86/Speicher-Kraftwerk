@@ -56,6 +56,9 @@ PRICE_THRESHOLD = os.environ.get("REPORT_PRICE_THRESHOLD", "").strip()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 
+# Zustellung – MS Teams (Incoming Webhook / Power Automate "Workflows")
+TEAMS_WEBHOOK_URL = os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
+
 # Zustellung – E-Mail (SMTP)
 SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
@@ -270,6 +273,36 @@ def send_telegram(text: str):
     return True
 
 
+def send_teams(text: str):
+    if not TEAMS_WEBHOOK_URL:
+        return False
+    lines = text.splitlines()
+    title = lines[0] if lines else "SKVE Tagesreport"
+    body = "\n".join(lines[1:]).strip() or text
+    # Adaptive-Card im "type: message"-Format – funktioniert mit dem modernen
+    # Power-Automate-"Workflows"-Webhook und den Graph-Incoming-Webhooks.
+    card = {
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "version": "1.4",
+                "body": [
+                    {"type": "TextBlock", "text": title, "weight": "Bolder",
+                     "size": "Medium", "wrap": True},
+                    {"type": "TextBlock", "text": body, "wrap": True},
+                ],
+            },
+        }],
+    }
+    r = requests.post(TEAMS_WEBHOOK_URL, json=card, timeout=30)
+    r.raise_for_status()
+    log.info("Report an MS Teams gesendet.")
+    return True
+
+
 def send_email(text: str):
     if not (SMTP_HOST and MAIL_TO and MAIL_FROM):
         return False
@@ -299,6 +332,10 @@ def deliver(text: str):
         sent = send_telegram(text) or sent
     except Exception as e:
         log.error("Telegram-Versand fehlgeschlagen: %s", e)
+    try:
+        sent = send_teams(text) or sent
+    except Exception as e:
+        log.error("Teams-Versand fehlgeschlagen: %s", e)
     try:
         sent = send_email(text) or sent
     except Exception as e:

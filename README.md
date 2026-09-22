@@ -108,9 +108,12 @@ Einrichtung (Env in Portainer, siehe `.env.example`):
 2. **Zustellweg** wählen:
    - *Telegram:* Bot bei `@BotFather` anlegen → `TELEGRAM_BOT_TOKEN`; eigene
      `TELEGRAM_CHAT_ID` z. B. via `@userinfobot`.
+   - *MS Teams:* Kanal → **Workflows** → Vorlage „Beim Empfang einer
+     Webhookanfrage in einem Kanal posten" → URL als `TEAMS_WEBHOOK_URL`.
    - *E-Mail:* `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
      `MAIL_FROM`, `MAIL_TO`.
-   - Ohne Zustellweg landet der Report nur im Container-Log.
+   - Mehrere Kanäle gleichzeitig sind möglich; ohne Zustellweg landet der
+     Report nur im Container-Log.
 3. Optional: `REPORT_HOUR`/`REPORT_MINUTE` (Uhrzeit), `REPORT_MODEL`,
    `REPORT_EFFORT` (`low`…`max`), `REPORT_PRICE_THRESHOLD` (€/MWh, ab der sich
    Produktion lohnt – leer = Claude schätzt anhand des Preisniveaus).
