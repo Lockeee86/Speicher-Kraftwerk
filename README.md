@@ -12,7 +12,7 @@ Schreibpfad wird bewusst nicht verwendet.
 | `timescaledb`  | PostgreSQL + Zeitreihen-Erweiterung (Datenspeicher)|
 | `collector`    | Python-Dienst, holt die Daten und schreibt sie    |
 | `grafana`      | Dashboard, erreichbar im LAN unter Port 3000      |
-| `reporter`     | KI-Tagesreport: Claude fasst die Lage zusammen und schickt sie per Telegram/E-Mail |
+| `reporter`     | KI-Wochenreport: Claude fasst die Lage zusammen und schickt sie per Telegram/Teams/E-Mail |
 
 ## Nahtloser Betrieb
 
@@ -94,13 +94,17 @@ SELECT count(*) FROM prices;
 SELECT count(*) FROM chp_schedule;
 ```
 
-## KI-Tagesreport (reporter)
+## KI-Wochenreport (reporter)
 
-Der `reporter`-Dienst erstellt täglich (Standard **09:00 Uhr**, `Europe/Berlin`)
-einen von **Claude** geschriebenen Bericht: Preis-Trend heute vs. gestern,
-teuerste/günstigste Stunde, geplante Produktion je Motor, erwarteter Spot-Erlös,
-Auffälligkeiten (z. B. negative Preise) und eine Empfehlung, ob und wie viel sich
-Produktion lohnt.
+Der `reporter`-Dienst erstellt wöchentlich (Standard **Montag 08:00 Uhr**,
+`Europe/Berlin`) einen von **Claude** geschriebenen Rückblick über die
+**letzte Kalenderwoche** und die **letzten 4 Wochen** (Trend): Ø/Min/Max
+DAA-Preis, erzeugte MWh und Spot-Erlös (gesamt und je Motor, mit Betriebsstunden
+und Auslastung), negative Preisphasen, Einordnung gegenüber dem 4-Wochen-Schnitt
+sowie ein kurzer Ausblick/Empfehlung.
+
+Wochentag/Uhrzeit über `REPORT_WEEKDAY` (Mo=0 … So=6), `REPORT_HOUR`,
+`REPORT_MINUTE` anpassbar.
 
 Einrichtung (Env in Portainer, siehe `.env.example`):
 1. **`ANTHROPIC_API_KEY`** setzen (von https://console.anthropic.com/). Kosten pro

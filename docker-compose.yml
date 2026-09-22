@@ -92,7 +92,8 @@ services:
       DB_USER: ${DB_USER:-skve}
       DB_PASSWORD: ${DB_PASSWORD}
       TZ: ${TZ:-Europe/Berlin}
-      REPORT_HOUR: ${REPORT_HOUR:-9}
+      REPORT_WEEKDAY: ${REPORT_WEEKDAY:-0}
+      REPORT_HOUR: ${REPORT_HOUR:-8}
       REPORT_MINUTE: ${REPORT_MINUTE:-0}
       RUN_ONCE: ${REPORT_RUN_ONCE:-false}
       # Claude (Pflicht für den Report – in Portainer setzen)

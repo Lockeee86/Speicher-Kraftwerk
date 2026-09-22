@@ -37,8 +37,9 @@ DB_PASS = os.environ.get("DB_PASSWORD", "skve")
 
 TZ = ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))
 
-# Uhrzeit des täglichen Reports (lokale Zeit).
-REPORT_HOUR = int(os.environ.get("REPORT_HOUR", "9"))
+# Wochentag + Uhrzeit des Reports (lokale Zeit). Wochentag: Mo=0 … So=6.
+REPORT_WEEKDAY = int(os.environ.get("REPORT_WEEKDAY", "0"))  # Montag
+REPORT_HOUR = int(os.environ.get("REPORT_HOUR", "8"))
 REPORT_MINUTE = int(os.environ.get("REPORT_MINUTE", "0"))
 # Einmal laufen und beenden (zum Testen).
 RUN_ONCE = os.environ.get("RUN_ONCE", "false").lower() in ("1", "true", "yes")
@@ -114,42 +115,7 @@ def _price_stats(cur, series, start, end):
     }
 
 
-def _extreme_hour(cur, start, end, order):
-    row = _one(cur,
-               f"SELECT ts, eur_mwh FROM prices "
-               f"WHERE series='DAA' AND ts >= %s AND ts < %s AND eur_mwh IS NOT NULL "
-               f"ORDER BY eur_mwh {order} LIMIT 1",
-               (start, end))
-    if not row:
-        return None
-    ts, val = row
-    return {"zeit": ts.astimezone(TZ).strftime("%H:%M"), "eur_mwh": round(float(val), 2)}
-
-
-def gather_data(conn) -> dict:
-    now_local = datetime.now(TZ)
-    today0 = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    tomorrow0 = today0 + timedelta(days=1)
-    yest0 = today0 - timedelta(days=1)
-    day_after0 = tomorrow0 + timedelta(days=1)
-
-    cur = conn.cursor()
-
-    # Preise
-    daa_today = _price_stats(cur, "DAA", today0, tomorrow0)
-    daa_yest = _price_stats(cur, "DAA", yest0, today0)
-    ida_today = _price_stats(cur, "IDA", today0, tomorrow0)
-    forecast_tomorrow = _price_stats(cur, "FORECAST_DAA", tomorrow0, day_after0)
-
-    teuerste = _extreme_hour(cur, today0, tomorrow0, "DESC")
-    guenstigste = _extreme_hour(cur, today0, tomorrow0, "ASC")
-
-    # negative / sehr niedrige Preisviertelstunden heute
-    neg = _one(cur,
-               "SELECT count(*) FROM prices WHERE series='DAA' "
-               "AND ts >= %s AND ts < %s AND eur_mwh < 0", (today0, tomorrow0))[0]
-
-    # Produktion je Motor heute (Fahrplan)
+def _motoren(cur, start, end):
     cur.execute(
         "SELECT m.name, m.section, m.nenn_kw, "
         "       coalesce(sum(s.kw*0.25/1000.0),0) AS mwh, "
@@ -159,46 +125,84 @@ def gather_data(conn) -> dict:
         "FROM chp_master m "
         "LEFT JOIN chp_schedule s ON s.chp_id = m.chp_id AND s.ts >= %s AND s.ts < %s "
         "GROUP BY m.name, m.section, m.nenn_kw ORDER BY mwh DESC",
-        (today0, tomorrow0))
-    motoren = []
+        (start, end))
+    out = []
     for name, section, nenn_kw, mwh, avg_kw, max_kw, bh in cur.fetchall():
-        motoren.append({
+        out.append({
             "name": name, "standort": section, "nenn_kw": int(nenn_kw),
             "mwh": round(float(mwh), 3), "avg_kw": round(float(avg_kw), 1),
             "max_kw": round(float(max_kw), 1),
             "betriebsstunden": round(float(bh), 2),
             "auslastung_pct": round(float(avg_kw) / nenn_kw * 100, 1) if nenn_kw else None,
         })
+    return out
 
-    # Erlös heute / gestern (Spot, DAA)
-    def erloes(start, end):
-        row = _one(cur,
-                   "SELECT coalesce(sum(erloes_eur),0), coalesce(sum(mwh),0) "
-                   "FROM v_erloes WHERE ts >= %s AND ts < %s", (start, end))
-        return {"erloes_eur": round(float(row[0]), 2), "mwh": round(float(row[1]), 3)}
+
+def _erloes(cur, start, end):
+    row = _one(cur,
+               "SELECT coalesce(sum(erloes_eur),0), coalesce(sum(mwh),0) "
+               "FROM v_erloes WHERE ts >= %s AND ts < %s", (start, end))
+    return {"erloes_eur": round(float(row[0]), 2), "mwh": round(float(row[1]), 3)}
+
+
+def _period(cur, label, start, end):
+    """Kennzahlen für einen Zeitraum [start, end)."""
+    neg = _one(cur, "SELECT count(*) FROM prices WHERE series='DAA' "
+                    "AND ts >= %s AND ts < %s AND eur_mwh < 0", (start, end))[0]
+    motoren = _motoren(cur, start, end)
+    return {
+        "zeitraum": label,
+        "von": start.strftime("%Y-%m-%d"),
+        "bis": (end - timedelta(seconds=1)).strftime("%Y-%m-%d"),
+        "preise": {
+            "daa": _price_stats(cur, "DAA", start, end),
+            "ida": _price_stats(cur, "IDA", start, end),
+            "negative_viertelstunden": int(neg or 0),
+        },
+        "produktion": {
+            "motoren": motoren,
+            "summe_mwh": round(sum(m["mwh"] for m in motoren), 3),
+        },
+        "erloes": _erloes(cur, start, end),
+    }
+
+
+def gather_data(conn) -> dict:
+    now_local = datetime.now(TZ)
+    today0 = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Beginn der laufenden (Kalender-)Woche = Montag 00:00.
+    this_monday = today0 - timedelta(days=today0.weekday())
+    last_week_start = this_monday - timedelta(days=7)   # letzte volle KW
+    four_weeks_start = this_monday - timedelta(days=28)  # letzte 4 Wochen
+
+    cur = conn.cursor()
+
+    letzte_woche = _period(cur, "letzte Kalenderwoche", last_week_start, this_monday)
+    letzte_woche["kw"] = last_week_start.isocalendar().week
+    letzte_4_wochen = _period(cur, "letzte 4 Wochen", four_weeks_start, this_monday)
+
+    # Wochen-Trend: die 4 Wochen einzeln (älteste zuerst) für den Verlauf.
+    wochen_trend = []
+    for i in range(4):
+        w_start = four_weeks_start + timedelta(days=7 * i)
+        w_end = w_start + timedelta(days=7)
+        er = _erloes(cur, w_start, w_end)
+        daa = _price_stats(cur, "DAA", w_start, w_end)
+        wochen_trend.append({
+            "kw": w_start.isocalendar().week,
+            "von": w_start.strftime("%Y-%m-%d"),
+            "daa_avg": daa["avg"],
+            "erloes_eur": er["erloes_eur"],
+            "mwh": er["mwh"],
+        })
 
     cur.close()
 
     return {
         "stand": now_local.strftime("%Y-%m-%d %H:%M"),
-        "datum_heute": today0.strftime("%Y-%m-%d"),
-        "preise": {
-            "daa_heute": daa_today,
-            "daa_gestern": daa_yest,
-            "ida_heute": ida_today,
-            "prognose_morgen_daa": forecast_tomorrow,
-            "teuerste_stunde_heute": teuerste,
-            "guenstigste_stunde_heute": guenstigste,
-            "negative_viertelstunden_heute": int(neg or 0),
-        },
-        "produktion_heute": {
-            "motoren": motoren,
-            "summe_mwh": round(sum(m["mwh"] for m in motoren), 3),
-        },
-        "erloes": {
-            "heute": erloes(today0, tomorrow0),
-            "gestern": erloes(yest0, today0),
-        },
+        "letzte_woche": letzte_woche,
+        "letzte_4_wochen": letzte_4_wochen,
+        "wochen_trend": wochen_trend,
         "preisschwelle_eur_mwh": float(PRICE_THRESHOLD) if PRICE_THRESHOLD else None,
     }
 
@@ -208,21 +212,27 @@ def gather_data(conn) -> dict:
 # --------------------------------------------------------------------------- #
 SYSTEM_PROMPT = """\
 Du bist Energie-Analyst für eine Biogas-BHKW-Anlage (Speicher-Kraftwerk / \
-virtuelles Kraftwerk). Du bekommst tägliche Kennzahlen als JSON und schreibst \
-daraus einen kurzen, konkreten Tagesbericht auf Deutsch für den Anlagenbetreiber.
+virtuelles Kraftwerk). Du bekommst wöchentliche Kennzahlen als JSON und schreibst \
+daraus einen kompakten Wochenrückblick auf Deutsch für den Anlagenbetreiber, \
+montagmorgens für die abgeschlossene Kalenderwoche.
+
+Der Report hat zwei Blickwinkel:
+1) die letzte Kalenderwoche (Detail),
+2) die letzten 4 Wochen als Einordnung/Trend (Feld "wochen_trend" enthält die \
+Wochen einzeln, älteste zuerst).
 
 Regeln:
-- Kompakt und sachlich, keine Floskeln. Zahlen mit Einheiten (€/MWh, MWh, kW, %).
-- Struktur mit kurzen Abschnitten/Überschriften und Stichpunkten.
-- Nenne den Preis-Trend heute vs. gestern (in % und Richtung) und die \
-teuerste/günstigste Stunde.
-- Beurteile die geplante Produktion je Motor (MWh, Betriebsstunden, Auslastung) \
-und ob sie in den teuren Stunden liegt.
-- Gib eine klare Empfehlung: Lohnt sich Produktion heute, und grob wie viel? \
-Wenn eine Preisschwelle angegeben ist, nutze sie; sonst beurteile anhand des \
-Preisniveaus. Weise auf negative/sehr niedrige Preise hin (dann nicht einspeisen).
+- Kompakt und sachlich, keine Floskeln. Zahlen mit Einheiten (€/MWh, MWh, %).
+- Struktur mit kurzen Überschriften und Stichpunkten.
+- Letzte Woche: Ø/Min/Max DAA-Preis, erzeugte MWh und Spot-Erlös gesamt, \
+Erlös/Produktion je Motor (Betriebsstunden, Auslastung), negative Preisphasen.
+- Trend: Wie liegt die letzte Woche im Vergleich zum 4-Wochen-Schnitt und zum \
+Verlauf der Einzelwochen (steigt/fällt Preis, Erlös, Produktion – mit % oder \
+Richtung)? Nenne beste/schwächste Woche.
+- Kurzer Ausblick/Empfehlung: Lohnt sich Produktion aktuell (Preisniveau; falls \
+eine Preisschwelle angegeben ist, nutze sie)? Auffälligkeiten hervorheben.
 - Wenn Daten fehlen (Werte null/0), sag das kurz, statt zu spekulieren.
-- Maximal ~250 Wörter. Beginne mit einer Zeile: "SKVE Tagesreport <Datum>".
+- Maximal ~300 Wörter. Beginne mit einer Zeile: "SKVE Wochenreport – KW <kw der letzten Woche>".
 """
 
 
@@ -359,17 +369,24 @@ def run_once():
         conn.close()
 
 
+_WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
+               "Freitag", "Samstag", "Sonntag"]
+
+
 def seconds_until_next_run() -> float:
     now = datetime.now(TZ)
     target = now.replace(hour=REPORT_HOUR, minute=REPORT_MINUTE, second=0, microsecond=0)
-    if target <= now:
-        target += timedelta(days=1)
+    days_ahead = (REPORT_WEEKDAY - now.weekday()) % 7
+    if days_ahead == 0 and target <= now:
+        days_ahead = 7
+    target += timedelta(days=days_ahead)
     return (target - now).total_seconds()
 
 
 def main():
-    log.info("SKVE Reporter startet. Report täglich um %02d:%02d (%s), Modell=%s.",
-             REPORT_HOUR, REPORT_MINUTE, TZ.key, REPORT_MODEL)
+    tag = _WOCHENTAGE[REPORT_WEEKDAY % 7]
+    log.info("SKVE Reporter startet. Wochenreport %s %02d:%02d (%s), Modell=%s.",
+             tag, REPORT_HOUR, REPORT_MINUTE, TZ.key, REPORT_MODEL)
     if RUN_ONCE:
         try:
             run_once()
@@ -378,7 +395,7 @@ def main():
         return
     while True:
         wait = seconds_until_next_run()
-        log.info("Nächster Report in %.1f h.", wait / 3600.0)
+        log.info("Nächster Report in %.1f Tagen.", wait / 86400.0)
         time.sleep(wait)
         try:
             run_once()
