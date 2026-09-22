@@ -15,6 +15,7 @@ Nahtlosigkeit:
 """
 
 import os
+import re
 import sys
 import time
 import logging
@@ -191,10 +192,25 @@ def api_get(path: str, start: datetime, end: datetime) -> dict:
     if r.status_code == 403:
         raise RuntimeError(f"403 – Zugriff verweigert auf {path}")
     if not r.ok:
-        # Fehler-Body der API mitloggen – z.B. "range too large" o.ä.
+        body = r.text[:300]
+        # Die API stellt Daten nur ab einem Mindest-Startdatum bereit (rollierendes
+        # Fenster). Meldung: "start_date must be greater than or equal to <epoch>".
+        # Startdatum automatisch darauf anheben und einmal wiederholen.
+        m = re.search(r"greater than or equal to (\d+)", body)
+        if m:
+            min_start = int(m.group(1))
+            if params["start_date"] < min_start:
+                if min_start >= params["end_date"]:
+                    # Fenster liegt komplett vor dem verfügbaren Zeitraum → leer.
+                    return {}
+                params["start_date"] = min_start
+                r = requests.get(url, params=params, headers=headers, timeout=60)
+                if r.ok:
+                    return r.json()
+                body = r.text[:300]
         raise RuntimeError(
             f"{r.status_code} {r.reason} für {path} "
-            f"[{params['start_date']}..{params['end_date']}]: {r.text[:300]}"
+            f"[{params['start_date']}..{params['end_date']}]: {body}"
         )
     return r.json()
 
