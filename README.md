@@ -94,17 +94,18 @@ SELECT count(*) FROM prices;
 SELECT count(*) FROM chp_schedule;
 ```
 
-## KI-Wochenreport (reporter)
+## KI-Report (reporter)
 
-Der `reporter`-Dienst erstellt wöchentlich (Standard **Montag 08:00 Uhr**,
-`Europe/Berlin`) einen von **Claude** geschriebenen Rückblick über die
-**letzte Kalenderwoche** und die **letzten 4 Wochen** (Trend): Ø/Min/Max
-DAA-Preis, erzeugte MWh und Spot-Erlös (gesamt und je Motor, mit Betriebsstunden
-und Auslastung), negative Preisphasen, Einordnung gegenüber dem 4-Wochen-Schnitt
-sowie ein kurzer Ausblick/Empfehlung.
+Der `reporter`-Dienst erstellt einen von **Claude** geschriebenen Rückblick über
+die **letzten 7 Tage** (gleitend, bis gestern) und die **letzten 4 Wochen**
+(Trend als vier 7-Tage-Blöcke): Ø/Min/Max DAA-Preis, erzeugte MWh und Spot-Erlös
+(gesamt und je Motor, mit Betriebsstunden und Auslastung), negative Preisphasen,
+Einordnung gegenüber dem 4-Wochen-Schnitt, Preis-Ausblick (DAA-Prognose) sowie
+ein kurzer Ausblick/Empfehlung.
 
-Wochentag/Uhrzeit über `REPORT_WEEKDAY` (Mo=0 … So=6), `REPORT_HOUR`,
-`REPORT_MINUTE` anpassbar.
+Zeitplan über `REPORT_WEEKDAY`, `REPORT_HOUR`, `REPORT_MINUTE` (Standard
+**Montag 08:00**, `Europe/Berlin`). Mehrere Tage kommagetrennt, z. B.
+`REPORT_WEEKDAY=0,2,4` für **Mo/Mi/Fr**.
 
 Einrichtung (Env in Portainer, siehe `.env.example`):
 1. **`ANTHROPIC_API_KEY`** setzen (von https://console.anthropic.com/). Kosten pro

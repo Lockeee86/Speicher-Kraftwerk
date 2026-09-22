@@ -183,35 +183,33 @@ def _period(cur, label, start, end):
 def gather_data(conn) -> dict:
     now_local = datetime.now(TZ)
     today0 = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    # Beginn der laufenden (Kalender-)Woche = Montag 00:00.
-    this_monday = today0 - timedelta(days=today0.weekday())
-    last_week_start = this_monday - timedelta(days=7)   # letzte volle KW
-    four_weeks_start = this_monday - timedelta(days=28)  # letzte 4 Wochen
+    # Gleitende Fenster, jeweils bis gestern (heute 00:00 exklusiv).
+    p7_start = today0 - timedelta(days=7)     # letzte 7 Tage
+    p28_start = today0 - timedelta(days=28)   # letzte 4 Wochen
 
     cur = conn.cursor()
 
-    letzte_woche = _period(cur, "letzte Kalenderwoche", last_week_start, this_monday)
-    letzte_woche["kw"] = last_week_start.isocalendar().week
-    letzte_4_wochen = _period(cur, "letzte 4 Wochen", four_weeks_start, this_monday)
+    letzte_7_tage = _period(cur, "letzte 7 Tage", p7_start, today0)
+    letzte_4_wochen = _period(cur, "letzte 4 Wochen", p28_start, today0)
 
-    # Wochen-Trend: die 4 Wochen einzeln (älteste zuerst) für den Verlauf.
-    wochen_trend = []
+    # Trend: vier aufeinanderfolgende 7-Tage-Blöcke (ältester zuerst).
+    trend_bloecke = []
     for i in range(4):
-        w_start = four_weeks_start + timedelta(days=7 * i)
-        w_end = w_start + timedelta(days=7)
-        er = _erloes(cur, w_start, w_end)
-        daa = _price_stats(cur, "DAA", w_start, w_end)
-        wochen_trend.append({
-            "kw": w_start.isocalendar().week,
-            "von": w_start.strftime("%Y-%m-%d"),
+        b_start = p28_start + timedelta(days=7 * i)
+        b_end = b_start + timedelta(days=7)
+        er = _erloes(cur, b_start, b_end)
+        daa = _price_stats(cur, "DAA", b_start, b_end)
+        trend_bloecke.append({
+            "von": b_start.strftime("%Y-%m-%d"),
+            "bis": (b_end - timedelta(days=1)).strftime("%Y-%m-%d"),
             "daa_avg": daa["avg"],
             "erloes_eur": er["erloes_eur"],
             "mwh": er["mwh"],
         })
 
     # Preis-Ausblick kommende Woche (Prognose FORECAST_DAA, soweit vorhanden).
-    komm_start = this_monday
-    komm_end = this_monday + timedelta(days=7)
+    komm_start = today0
+    komm_end = today0 + timedelta(days=7)
     prog = _price_stats(cur, "FORECAST_DAA", komm_start, komm_end)
     maxfc = _one(cur, "SELECT max(ts) FROM prices WHERE series='FORECAST_DAA'", ())[0]
     if maxfc and maxfc > komm_start:
@@ -230,9 +228,9 @@ def gather_data(conn) -> dict:
 
     return {
         "stand": now_local.strftime("%Y-%m-%d %H:%M"),
-        "letzte_woche": letzte_woche,
+        "letzte_7_tage": letzte_7_tage,
         "letzte_4_wochen": letzte_4_wochen,
-        "wochen_trend": wochen_trend,
+        "trend_wochenbloecke": trend_bloecke,
         "prognose_kommende_woche": prognose_kommende,
         "preisschwelle_eur_mwh": float(PRICE_THRESHOLD) if PRICE_THRESHOLD else None,
     }
@@ -243,32 +241,32 @@ def gather_data(conn) -> dict:
 # --------------------------------------------------------------------------- #
 SYSTEM_PROMPT = """\
 Du bist Energie-Analyst für eine Biogas-BHKW-Anlage (Speicher-Kraftwerk / \
-virtuelles Kraftwerk). Du bekommst wöchentliche Kennzahlen als JSON und schreibst \
-daraus einen kompakten Wochenrückblick auf Deutsch für den Anlagenbetreiber, \
-montagmorgens für die abgeschlossene Kalenderwoche.
+virtuelles Kraftwerk). Du bekommst Kennzahlen als JSON und schreibst daraus einen \
+kompakten Rückblick auf Deutsch für den Anlagenbetreiber. Er erscheint mehrmals \
+pro Woche und betrachtet immer die gleitenden letzten 7 Tage (bis gestern).
 
 Der Report hat zwei Blickwinkel:
-1) die letzte Kalenderwoche (Detail),
-2) die letzten 4 Wochen als Einordnung/Trend (Feld "wochen_trend" enthält die \
-Wochen einzeln, älteste zuerst).
+1) die letzten 7 Tage (Detail, Feld "letzte_7_tage"),
+2) die letzten 4 Wochen als Einordnung/Trend (Feld "letzte_4_wochen" gesamt, \
+"trend_wochenbloecke" = vier aufeinanderfolgende 7-Tage-Blöcke, ältester zuerst).
 
 Regeln:
 - Kompakt und sachlich, keine Floskeln. Zahlen mit Einheiten (€/MWh, MWh, %).
 - Struktur mit kurzen Überschriften und Stichpunkten.
-- Letzte Woche: Ø/Min/Max DAA-Preis, erzeugte MWh und Spot-Erlös gesamt, \
+- Letzte 7 Tage: Ø/Min/Max DAA-Preis, erzeugte MWh und Spot-Erlös gesamt, \
 Erlös/Produktion je Motor (Betriebsstunden, Auslastung), negative Preisphasen.
-- Trend: Wie liegt die letzte Woche im Vergleich zum 4-Wochen-Schnitt und zum \
-Verlauf der Einzelwochen (steigt/fällt Preis, Erlös, Produktion – mit % oder \
-Richtung)? Nenne beste/schwächste Woche.
+- Trend: Wie liegen die letzten 7 Tage im Vergleich zum 4-Wochen-Schnitt und zum \
+Verlauf der 7-Tage-Blöcke (steigt/fällt Preis, Erlös, Produktion – mit % oder \
+Richtung)? Nenne besten/schwächsten Block.
 - Preis-Ausblick kommende Woche: Nutze "prognose_kommende_woche" (DAA-Prognose). \
-Nenne das erwartete Preisniveau und den Trend ggü. der letzten Woche (Richtung/%). \
+Nenne das erwartete Preisniveau und den Trend ggü. den letzten 7 Tagen (Richtung/%). \
 Sei transparent, wie weit die Prognose reicht ("abgedeckte_tage"/"prognose_reicht_bis") \
 - wenn nur 1-2 Tage abgedeckt sind, sag das klar und spekuliere nicht über den Rest.
 - Kurzer Ausblick/Empfehlung: Lohnt sich Produktion aktuell bzw. in den nächsten \
 Tagen (Preisniveau + Prognose; falls eine Preisschwelle angegeben ist, nutze sie)? \
 Auffälligkeiten hervorheben.
 - Wenn Daten fehlen (Werte null/0), sag das kurz, statt zu spekulieren.
-- Maximal ~300 Wörter. Beginne mit einer Zeile: "SKVE Wochenreport – KW <kw der letzten Woche>".
+- Maximal ~300 Wörter. Beginne mit einer Zeile: "SKVE Report – letzte 7 Tage bis <bis-Datum aus letzte_7_tage>".
 """
 
 
