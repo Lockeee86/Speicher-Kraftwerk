@@ -45,7 +45,7 @@ services:
       RUN_INTERVAL_SEC: ${RUN_INTERVAL_SEC:-86400}
       RUN_ONCE: ${RUN_ONCE:-false}
       OVERLAP_HOURS: ${OVERLAP_HOURS:-6}
-      FUTURE_HORIZON_DAYS: ${FUTURE_HORIZON_DAYS:-2}
+      FUTURE_HORIZON_DAYS: ${FUTURE_HORIZON_DAYS:-7}
       BACKFILL_FALLBACK_DAYS: ${BACKFILL_FALLBACK_DAYS:-3}
       MAX_CHUNK_DAYS: ${MAX_CHUNK_DAYS:-14}
       CHUNK_PAUSE_SEC: ${CHUNK_PAUSE_SEC:-0.5}
@@ -77,8 +77,8 @@ services:
       - skve_grafana:/var/lib/grafana
 
   reporter:
-    # KI-Tagesreport: liest die DB, lässt Claude einen Bericht schreiben,
-    # schickt ihn per Telegram/E-Mail. Standard: täglich 09:00 Uhr.
+    # KI-Wochenreport: liest die DB, lässt Claude einen Bericht schreiben,
+    # schickt ihn per Telegram/Teams/E-Mail. Standard: Montag 08:00 Uhr.
     build: ./reporter
     container_name: skve-reporter
     restart: unless-stopped

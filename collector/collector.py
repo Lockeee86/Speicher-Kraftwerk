@@ -58,7 +58,7 @@ BACKFILL_FALLBACK_DAYS = int(os.environ.get("BACKFILL_FALLBACK_DAYS", "3"))
 OVERLAP_HOURS = int(os.environ.get("OVERLAP_HOURS", "6"))
 
 # Wie weit maximal in die Zukunft ziehen (Fahrpläne/Prognose liegen voraus).
-FUTURE_HORIZON_DAYS = int(os.environ.get("FUTURE_HORIZON_DAYS", "2"))
+FUTURE_HORIZON_DAYS = int(os.environ.get("FUTURE_HORIZON_DAYS", "7"))
 
 # Maximale Fenstergröße pro API-Abfrage (Tage). Größere Zeiträume werden in
 # Stücke dieser Länge zerlegt – die API liefert mehr als ~1 Monat am Stück

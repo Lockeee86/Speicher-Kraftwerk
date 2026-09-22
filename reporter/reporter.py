@@ -196,6 +196,23 @@ def gather_data(conn) -> dict:
             "mwh": er["mwh"],
         })
 
+    # Preis-Ausblick kommende Woche (Prognose FORECAST_DAA, soweit vorhanden).
+    komm_start = this_monday
+    komm_end = this_monday + timedelta(days=7)
+    prog = _price_stats(cur, "FORECAST_DAA", komm_start, komm_end)
+    maxfc = _one(cur, "SELECT max(ts) FROM prices WHERE series='FORECAST_DAA'")[0]
+    if maxfc and maxfc > komm_start:
+        abdeckung = round((min(maxfc, komm_end) - komm_start).total_seconds() / 86400, 1)
+        reichweite = maxfc.astimezone(TZ).strftime("%Y-%m-%d %H:%M")
+    else:
+        abdeckung, reichweite = 0.0, None
+    prognose_kommende = {
+        "daa_forecast": prog,
+        "prognose_reicht_bis": reichweite,
+        "abgedeckte_tage": abdeckung,
+        "hinweis": "Day-Ahead-Prognose reicht meist nur 1-2 Tage voraus.",
+    }
+
     cur.close()
 
     return {
@@ -203,6 +220,7 @@ def gather_data(conn) -> dict:
         "letzte_woche": letzte_woche,
         "letzte_4_wochen": letzte_4_wochen,
         "wochen_trend": wochen_trend,
+        "prognose_kommende_woche": prognose_kommende,
         "preisschwelle_eur_mwh": float(PRICE_THRESHOLD) if PRICE_THRESHOLD else None,
     }
 
@@ -229,8 +247,13 @@ Erlös/Produktion je Motor (Betriebsstunden, Auslastung), negative Preisphasen.
 - Trend: Wie liegt die letzte Woche im Vergleich zum 4-Wochen-Schnitt und zum \
 Verlauf der Einzelwochen (steigt/fällt Preis, Erlös, Produktion – mit % oder \
 Richtung)? Nenne beste/schwächste Woche.
-- Kurzer Ausblick/Empfehlung: Lohnt sich Produktion aktuell (Preisniveau; falls \
-eine Preisschwelle angegeben ist, nutze sie)? Auffälligkeiten hervorheben.
+- Preis-Ausblick kommende Woche: Nutze "prognose_kommende_woche" (DAA-Prognose). \
+Nenne das erwartete Preisniveau und den Trend ggü. der letzten Woche (Richtung/%). \
+Sei transparent, wie weit die Prognose reicht ("abgedeckte_tage"/"prognose_reicht_bis") \
+- wenn nur 1-2 Tage abgedeckt sind, sag das klar und spekuliere nicht über den Rest.
+- Kurzer Ausblick/Empfehlung: Lohnt sich Produktion aktuell bzw. in den nächsten \
+Tagen (Preisniveau + Prognose; falls eine Preisschwelle angegeben ist, nutze sie)? \
+Auffälligkeiten hervorheben.
 - Wenn Daten fehlen (Werte null/0), sag das kurz, statt zu spekulieren.
 - Maximal ~300 Wörter. Beginne mit einer Zeile: "SKVE Wochenreport – KW <kw der letzten Woche>".
 """
