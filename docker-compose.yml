@@ -76,6 +76,41 @@ services:
     volumes:
       - skve_grafana:/var/lib/grafana
 
+  reporter:
+    # KI-Tagesreport: liest die DB, lässt Claude einen Bericht schreiben,
+    # schickt ihn per Telegram/E-Mail. Standard: täglich 09:00 Uhr.
+    build: ./reporter
+    container_name: skve-reporter
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-skve}
+      DB_USER: ${DB_USER:-skve}
+      DB_PASSWORD: ${DB_PASSWORD}
+      TZ: ${TZ:-Europe/Berlin}
+      REPORT_HOUR: ${REPORT_HOUR:-9}
+      REPORT_MINUTE: ${REPORT_MINUTE:-0}
+      RUN_ONCE: ${REPORT_RUN_ONCE:-false}
+      # Claude (Pflicht für den Report – in Portainer setzen)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      REPORT_MODEL: ${REPORT_MODEL:-claude-opus-5}
+      REPORT_EFFORT: ${REPORT_EFFORT:-medium}
+      REPORT_PRICE_THRESHOLD: ${REPORT_PRICE_THRESHOLD:-}
+      # Zustellung – Telegram (optional)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Zustellung – E-Mail (optional)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_TO: ${MAIL_TO:-}
+
 volumes:
   skve_db:
   skve_grafana:

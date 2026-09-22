@@ -12,6 +12,7 @@ Schreibpfad wird bewusst nicht verwendet.
 | `timescaledb`  | PostgreSQL + Zeitreihen-Erweiterung (Datenspeicher)|
 | `collector`    | Python-Dienst, holt die Daten und schreibt sie    |
 | `grafana`      | Dashboard, erreichbar im LAN unter Port 3000      |
+| `reporter`     | KI-Tagesreport: Claude fasst die Lage zusammen und schickt sie per Telegram/E-Mail |
 
 ## Nahtloser Betrieb
 
@@ -92,6 +93,30 @@ SELECT stream, last_ts, last_status FROM ingest_state;
 SELECT count(*) FROM prices;
 SELECT count(*) FROM chp_schedule;
 ```
+
+## KI-Tagesreport (reporter)
+
+Der `reporter`-Dienst erstellt täglich (Standard **09:00 Uhr**, `Europe/Berlin`)
+einen von **Claude** geschriebenen Bericht: Preis-Trend heute vs. gestern,
+teuerste/günstigste Stunde, geplante Produktion je Motor, erwarteter Spot-Erlös,
+Auffälligkeiten (z. B. negative Preise) und eine Empfehlung, ob und wie viel sich
+Produktion lohnt.
+
+Einrichtung (Env in Portainer, siehe `.env.example`):
+1. **`ANTHROPIC_API_KEY`** setzen (von https://console.anthropic.com/). Kosten pro
+   Report sind minimal (wenige Cent).
+2. **Zustellweg** wählen:
+   - *Telegram:* Bot bei `@BotFather` anlegen → `TELEGRAM_BOT_TOKEN`; eigene
+     `TELEGRAM_CHAT_ID` z. B. via `@userinfobot`.
+   - *E-Mail:* `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
+     `MAIL_FROM`, `MAIL_TO`.
+   - Ohne Zustellweg landet der Report nur im Container-Log.
+3. Optional: `REPORT_HOUR`/`REPORT_MINUTE` (Uhrzeit), `REPORT_MODEL`,
+   `REPORT_EFFORT` (`low`…`max`), `REPORT_PRICE_THRESHOLD` (€/MWh, ab der sich
+   Produktion lohnt – leer = Claude schätzt anhand des Preisniveaus).
+
+**Sofort testen:** `REPORT_RUN_ONCE=true` setzen, Stack neu deployen → der Report
+wird einmal sofort erzeugt und verschickt; danach wieder auf `false`.
 
 ## API-Key-Ablauf
 
