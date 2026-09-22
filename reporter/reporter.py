@@ -200,7 +200,7 @@ def gather_data(conn) -> dict:
     komm_start = this_monday
     komm_end = this_monday + timedelta(days=7)
     prog = _price_stats(cur, "FORECAST_DAA", komm_start, komm_end)
-    maxfc = _one(cur, "SELECT max(ts) FROM prices WHERE series='FORECAST_DAA'")[0]
+    maxfc = _one(cur, "SELECT max(ts) FROM prices WHERE series='FORECAST_DAA'", ())[0]
     if maxfc and maxfc > komm_start:
         abdeckung = round((min(maxfc, komm_end) - komm_start).total_seconds() / 86400, 1)
         reichweite = maxfc.astimezone(TZ).strftime("%Y-%m-%d %H:%M")
