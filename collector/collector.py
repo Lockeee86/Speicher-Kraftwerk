@@ -190,7 +190,12 @@ def api_get(path: str, start: datetime, end: datetime) -> dict:
         raise RuntimeError("401 – API-Key ungültig oder abgelaufen")
     if r.status_code == 403:
         raise RuntimeError(f"403 – Zugriff verweigert auf {path}")
-    r.raise_for_status()
+    if not r.ok:
+        # Fehler-Body der API mitloggen – z.B. "range too large" o.ä.
+        raise RuntimeError(
+            f"{r.status_code} {r.reason} für {path} "
+            f"[{params['start_date']}..{params['end_date']}]: {r.text[:300]}"
+        )
     return r.json()
 
 
