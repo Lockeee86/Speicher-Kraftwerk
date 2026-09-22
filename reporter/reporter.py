@@ -126,14 +126,21 @@ def _motoren(cur, start, end):
         "LEFT JOIN chp_schedule s ON s.chp_id = m.chp_id AND s.ts >= %s AND s.ts < %s "
         "GROUP BY m.name, m.section, m.nenn_kw ORDER BY mwh DESC",
         (start, end))
+    rows = cur.fetchall()
+    # Spot-Erlös je Motor aus der View v_erloes.
+    cur.execute(
+        "SELECT name, coalesce(sum(erloes_eur),0) FROM v_erloes "
+        "WHERE ts >= %s AND ts < %s GROUP BY name", (start, end))
+    erl = {name: round(float(e), 2) for name, e in cur.fetchall()}
     out = []
-    for name, section, nenn_kw, mwh, avg_kw, max_kw, bh in cur.fetchall():
+    for name, section, nenn_kw, mwh, avg_kw, max_kw, bh in rows:
         out.append({
             "name": name, "standort": section, "nenn_kw": int(nenn_kw),
             "mwh": round(float(mwh), 3), "avg_kw": round(float(avg_kw), 1),
             "max_kw": round(float(max_kw), 1),
             "betriebsstunden": round(float(bh), 2),
             "auslastung_pct": round(float(avg_kw) / nenn_kw * 100, 1) if nenn_kw else None,
+            "erloes_eur": erl.get(name, 0.0),
         })
     return out
 
@@ -375,7 +382,7 @@ def deliver(text: str):
         log.error("E-Mail-Versand fehlgeschlagen: %s", e)
     if not sent:
         log.warning("Kein Zustellkanal konfiguriert – Report nur im Log:")
-    log.info("\n===== TAGESREPORT =====\n%s\n=======================", text)
+    log.info("\n===== WOCHENREPORT =====\n%s\n========================", text)
 
 
 # --------------------------------------------------------------------------- #
