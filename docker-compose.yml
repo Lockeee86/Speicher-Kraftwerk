@@ -29,7 +29,6 @@ services:
 
   collector:
     build: ./collector
-    image: skve-collector:latest
     container_name: skve-collector
     restart: unless-stopped
     depends_on:
@@ -60,7 +59,6 @@ services:
     # Eigenes Image mit eingebackenem Provisioning (Datenquelle + Dashboards).
     # Bind-Mounts aus dem Git-Repo kommen in Portainer/dind-Setups nicht an.
     build: ./grafana
-    image: skve-grafana:latest
     container_name: skve-grafana
     restart: unless-stopped
     depends_on:
