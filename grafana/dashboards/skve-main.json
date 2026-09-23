@@ -1,445 +1,500 @@
 {
-  "title": "SKVE – BGA Ribbesbüttel",
-  "uid": "skve-main",
-  "tags": [
-    "skve",
-    "biogas"
-  ],
-  "timezone": "browser",
-  "schemaVersion": 39,
-  "version": 1,
-  "refresh": "30m",
-  "time": {
-    "from": "now-7d",
-    "to": "now+2d"
-  },
-  "panels": [
+ "title": "SKVE – BGA Ribbesbüttel",
+ "uid": "skve-main",
+ "tags": [
+  "skve",
+  "biogas"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 2,
+ "refresh": "30m",
+ "time": {
+  "from": "now-7d",
+  "to": "now+2d"
+ },
+ "panels": [
+  {
+   "title": "Ø DAA-Preis (7 Tage)",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 0
+   },
+   "id": 1,
+   "targets": [
     {
-      "title": "Ø DAA-Preis (7 Tage)",
-      "type": "stat",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "table",
-          "rawSql": "SELECT avg(eur_mwh) FROM prices WHERE series='DAA' AND ts > now() - interval '7 days'",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyEUR"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value"
-      }
-    },
-    {
-      "title": "Erlös heute (Spot, alle Motoren)",
-      "type": "stat",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 0
-      },
-      "id": 2,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "table",
-          "rawSql": "SELECT coalesce(sum(erloes_eur),0) FROM v_erloes WHERE ts::date = now()::date",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyEUR"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value"
-      }
-    },
-    {
-      "title": "Erzeugung heute",
-      "type": "stat",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 0
-      },
-      "id": 3,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "table",
-          "rawSql": "SELECT coalesce(sum(mwh),0) FROM v_erloes WHERE ts::date = now()::date",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "MWh"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "value"
-      }
-    },
-    {
-      "title": "Letzter Datenstand",
-      "type": "stat",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 0
-      },
-      "id": 4,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "table",
-          "rawSql": "SELECT extract(epoch from max(last_run)) * 1000 AS \"Letzter Datenstand\" FROM ingest_state",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "dateTimeAsIso"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "none"
-      }
-    },
-    {
-      "title": "Strompreise: DAA / IDA / Prognose",
-      "type": "timeseries",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 4
-      },
-      "id": 5,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "time_series",
-          "rawSql": "SELECT ts AS time, series AS metric, eur_mwh AS value\nFROM prices\nWHERE ts > now() - interval '7 days' AND $__timeFilter(ts)\nORDER BY ts",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyEUR",
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "stepAfter",
-            "fillOpacity": 8
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "title": "Spot-Erlös je Motor (gestapelt)",
-      "type": "timeseries",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 12
-      },
-      "id": 6,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "time_series",
-          "rawSql": "SELECT ts AS time, name AS metric, erloes_eur AS value\nFROM v_erloes\nWHERE ts > now() - interval '3 days' AND $__timeFilter(ts)\nORDER BY ts",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyEUR",
-          "custom": {
-            "drawStyle": "bars",
-            "stacking": {
-              "mode": "normal"
-            },
-            "fillOpacity": 70
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "title": "Leistung je Motor",
-      "type": "timeseries",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 12
-      },
-      "id": 7,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "time_series",
-          "rawSql": "SELECT s.ts AS time, m.name AS metric, s.kw AS value\nFROM chp_schedule s JOIN chp_master m ON m.chp_id=s.chp_id\nWHERE s.ts > now() - interval '3 days' AND $__timeFilter(s.ts)\nORDER BY s.ts",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "kwatt",
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "stepAfter",
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "title": "Jahresauslastung Hauptstandort (Grenze 2.190 MWh)",
-      "type": "gauge",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 12,
-        "x": 0,
-        "y": 20
-      },
-      "id": 8,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "table",
-          "rawSql": "SELECT sum(mwh)/2190.0*100 AS value\nFROM v_erloes\nWHERE section='Hauptstandort' AND date_part('year', ts)=date_part('year', now())",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "min": 0,
-          "max": 100,
-          "thresholds": {
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "orange",
-                "value": 85
-              },
-              {
-                "color": "red",
-                "value": 100
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      }
-    },
-    {
-      "title": "Jahresauslastung Satellit (Grenze 3.504 MWh)",
-      "type": "gauge",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 12,
-        "x": 12,
-        "y": 20
-      },
-      "id": 9,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "table",
-          "rawSql": "SELECT sum(mwh)/3504.0*100 AS value\nFROM v_erloes\nWHERE section='Satellit' AND date_part('year', ts)=date_part('year', now())",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "min": 0,
-          "max": 100,
-          "thresholds": {
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "orange",
-                "value": 85
-              },
-              {
-                "color": "red",
-                "value": 100
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      }
-    },
-    {
-      "title": "Monatserlös & Menge (Spot)",
-      "type": "table",
-      "datasource": {
-        "type": "postgres",
-        "uid": "skve-tsdb"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 26
-      },
-      "id": 10,
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "postgres",
-            "uid": "skve-tsdb"
-          },
-          "format": "table",
-          "rawSql": "SELECT date_trunc('month', ts) AS \"Monat\",\n       round(sum(mwh)::numeric,0) AS \"MWh\",\n       round(sum(erloes_eur)::numeric,0) AS \"Erlös EUR\",\n       round((sum(erloes_eur)/nullif(sum(mwh),0))::numeric,2) AS \"EUR/MWh\"\nFROM v_erloes\nGROUP BY 1 ORDER BY 1 DESC",
-          "rawQuery": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      }
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT avg(eur_mwh) FROM prices WHERE series='DAA' AND ts > now() - interval '7 days'",
+     "rawQuery": true
     }
-  ]
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value"
+   }
+  },
+  {
+   "title": "Erlös heute (Spot, alle Motoren)",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 0
+   },
+   "id": 2,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT coalesce(sum(erloes_eur),0) FROM v_erloes WHERE ts::date = now()::date",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value"
+   }
+  },
+  {
+   "title": "Erzeugung heute",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 0
+   },
+   "id": 3,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT coalesce(sum(mwh),0) FROM v_erloes WHERE ts::date = now()::date",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "MWh"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value"
+   }
+  },
+  {
+   "title": "Letzter Datenstand",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 0
+   },
+   "id": 4,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT extract(epoch from max(last_run)) * 1000 AS \"Letzter Datenstand\" FROM ingest_state",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "dateTimeAsIso"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "none"
+   }
+  },
+  {
+   "title": "Strompreise: DAA / IDA / Prognose",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 4
+   },
+   "id": 5,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT ts AS time, series AS metric, eur_mwh AS value\nFROM prices\nWHERE ts > now() - interval '7 days' AND $__timeFilter(ts)\nORDER BY ts",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR",
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "stepAfter",
+      "fillOpacity": 8
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Spot-Erlös je Motor (gestapelt)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 12
+   },
+   "id": 6,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT ts AS time, name AS metric, erloes_eur AS value\nFROM v_erloes\nWHERE ts > now() - interval '3 days' AND $__timeFilter(ts)\nORDER BY ts",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR",
+     "custom": {
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      },
+      "fillOpacity": 70
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Leistung je Motor",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 12
+   },
+   "id": 7,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT s.ts AS time, m.name AS metric, s.kw AS value\nFROM chp_schedule s JOIN chp_master m ON m.chp_id=s.chp_id\nWHERE s.ts > now() - interval '3 days' AND $__timeFilter(s.ts)\nORDER BY s.ts",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "kwatt",
+     "custom": {
+      "drawStyle": "line",
+      "lineInterpolation": "stepAfter",
+      "fillOpacity": 10
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Jahresauslastung Hauptstandort (Grenze 2.190 MWh)",
+   "type": "gauge",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 12,
+    "x": 0,
+    "y": 20
+   },
+   "id": 8,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT sum(mwh)/2190.0*100 AS value\nFROM v_erloes\nWHERE section='Hauptstandort' AND date_part('year', ts)=date_part('year', now())",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       },
+       {
+        "color": "orange",
+        "value": 85
+       },
+       {
+        "color": "red",
+        "value": 100
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "title": "Jahresauslastung Satellit (Grenze 3.504 MWh)",
+   "type": "gauge",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 12,
+    "x": 12,
+    "y": 20
+   },
+   "id": 9,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT sum(mwh)/3504.0*100 AS value\nFROM v_erloes\nWHERE section='Satellit' AND date_part('year', ts)=date_part('year', now())",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       },
+       {
+        "color": "orange",
+        "value": 85
+       },
+       {
+        "color": "red",
+        "value": 100
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   }
+  },
+  {
+   "title": "Monatserlös & Menge (Spot)",
+   "type": "table",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 7,
+    "w": 24,
+    "x": 0,
+    "y": 26
+   },
+   "id": 10,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT date_trunc('month', ts) AS \"Monat\",\n       round(sum(mwh)::numeric,0) AS \"MWh\",\n       round(sum(erloes_eur)::numeric,0) AS \"Erlös EUR\",\n       round((sum(erloes_eur)/nullif(sum(mwh),0))::numeric,2) AS \"EUR/MWh\"\nFROM v_erloes\nGROUP BY 1 ORDER BY 1 DESC",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   }
+  },
+  {
+   "title": "Laufzeit je Motor (Stunden/Tag, gestapelt)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 33
+   },
+   "id": 11,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT date_trunc('day', s.ts) AS time, m.name AS metric,\n       sum(CASE WHEN s.kw > 0 THEN 0.25 ELSE 0 END) AS value\nFROM chp_schedule s\nJOIN chp_master m ON m.chp_id = s.chp_id\nWHERE $__timeFilter(s.ts)\nGROUP BY 1, 2\nORDER BY 1",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "h",
+     "custom": {
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      },
+      "fillOpacity": 80,
+      "barAlignment": 0,
+      "lineWidth": 1
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "tooltip": {
+     "mode": "multi",
+     "sort": "descending"
+    },
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "sum"
+     ]
+    }
+   }
+  }
+ ]
 }
