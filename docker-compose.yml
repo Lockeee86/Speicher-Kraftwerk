@@ -103,6 +103,7 @@ services:
       REPORT_MODEL: ${REPORT_MODEL:-claude-opus-5}
       REPORT_EFFORT: ${REPORT_EFFORT:-medium}
       REPORT_PRICE_THRESHOLD: ${REPORT_PRICE_THRESHOLD:-}
+      REPORT_DISCLAIMER: '${REPORT_DISCLAIMER:-⚠️ Hinweis: "Spot" = reiner Börsen-Rohertrag (DAA), nicht der tatsächliche Erlös (EEG-Vergütung + Flexprämie sind nicht enthalten).}'
       # Zustellung – Telegram (optional)
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}

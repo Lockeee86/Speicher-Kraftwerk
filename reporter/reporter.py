@@ -59,6 +59,13 @@ REPORT_EFFORT = os.environ.get("REPORT_EFFORT", "medium")  # low|medium|high|xhi
 # Leer = keine feste Schwelle; Claude schätzt anhand des Preisniveaus.
 PRICE_THRESHOLD = os.environ.get("REPORT_PRICE_THRESHOLD", "").strip()
 
+# Fester Hinweis, der unter jeden Report gehängt wird (leer = kein Hinweis).
+REPORT_DISCLAIMER = os.environ.get(
+    "REPORT_DISCLAIMER",
+    "⚠️ Hinweis: \"Spot\" = reiner Börsen-Rohertrag (DAA), nicht der tatsächliche "
+    "Erlös (EEG-Vergütung + Flexprämie sind nicht enthalten).",
+).strip()
+
 # Zustellung – Telegram
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
@@ -398,6 +405,8 @@ def run_once():
         data = gather_data(conn)
         log.info("Kennzahlen erhoben (Stand %s).", data["stand"])
         report = build_report(data)
+        if REPORT_DISCLAIMER:
+            report = f"{report}\n\n{REPORT_DISCLAIMER}"
         deliver(report)
     finally:
         conn.close()
