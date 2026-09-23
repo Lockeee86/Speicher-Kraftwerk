@@ -7,7 +7,7 @@
  ],
  "timezone": "browser",
  "schemaVersion": 39,
- "version": 2,
+ "version": 3,
  "refresh": "30m",
  "time": {
   "from": "now-7d",
@@ -494,6 +494,614 @@
       "sum"
      ]
     }
+   }
+  },
+  {
+   "title": "Laufzeit je Motor (Stunden/Monat, gestapelt)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 41
+   },
+   "id": 12,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT date_trunc('month', s.ts) AS time, m.name AS metric,\n       sum(CASE WHEN s.kw>0 THEN 0.25 ELSE 0 END) AS value\nFROM chp_schedule s JOIN chp_master m ON m.chp_id=s.chp_id\nWHERE $__timeFilter(s.ts)\nGROUP BY 1,2 ORDER BY 1",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "h",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "sum"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "descending"
+    }
+   }
+  },
+  {
+   "title": "Volllaststunden je Motor (laufendes Jahr)",
+   "type": "barchart",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 41
+   },
+   "id": 13,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT m.name AS \"Motor\", round((sum(e.mwh)/(m.nenn_kw/1000.0))::numeric,0) AS \"Volllaststunden\"\nFROM v_erloes e JOIN chp_master m ON m.chp_id=e.chp_id\nWHERE date_part('year', e.ts)=date_part('year', now())\nGROUP BY m.name, m.nenn_kw ORDER BY 2 DESC",
+     "rawQuery": true
+    }
+   ],
+   "options": {
+    "xField": "Motor",
+    "orientation": "auto",
+    "showValue": "auto",
+    "stacking": "none",
+    "legend": {
+     "showLegend": false
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "h",
+     "custom": {
+      "fillOpacity": 85
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Auslastung je Motor % (Zeitraum)",
+   "type": "barchart",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 7,
+    "w": 12,
+    "x": 0,
+    "y": 49
+   },
+   "id": 14,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT m.name AS \"Motor\", round((avg(s.kw)/m.nenn_kw*100)::numeric,1) AS \"Auslastung %\"\nFROM chp_schedule s JOIN chp_master m ON m.chp_id=s.chp_id\nWHERE $__timeFilter(s.ts)\nGROUP BY m.name, m.nenn_kw ORDER BY 2 DESC",
+     "rawQuery": true
+    }
+   ],
+   "options": {
+    "xField": "Motor",
+    "orientation": "auto",
+    "showValue": "auto",
+    "stacking": "none",
+    "legend": {
+     "showLegend": false
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "fillOpacity": 85
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Vermarktungsgüte: erlösgewichtet vs. Ø DAA-Markt (€/MWh)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 7,
+    "w": 12,
+    "x": 12,
+    "y": 49
+   },
+   "id": 15,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT date_trunc('day', ts) AS time, 'erlösgewichtet' AS metric,\n       sum(erloes_eur)/NULLIF(sum(mwh),0) AS value\nFROM v_erloes WHERE $__timeFilter(ts) GROUP BY 1\nUNION ALL\nSELECT date_trunc('day', ts) AS time, 'Ø DAA-Markt' AS metric, avg(eur_mwh) AS value\nFROM prices WHERE series='DAA' AND $__timeFilter(ts) GROUP BY 1\nORDER BY 1",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 5,
+      "lineInterpolation": "stepAfter"
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Erlös laufender Monat (Spot)",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 56
+   },
+   "id": 16,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT coalesce(sum(erloes_eur),0) AS value FROM v_erloes\nWHERE date_trunc('month', ts)=date_trunc('month', now())",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value"
+   }
+  },
+  {
+   "title": "Erlös laufendes Jahr (Spot)",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 56
+   },
+   "id": 17,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT coalesce(sum(erloes_eur),0) AS value FROM v_erloes\nWHERE date_part('year', ts)=date_part('year', now())",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value"
+   }
+  },
+  {
+   "title": "Produktion in Hochpreisstunden (> Ø-Preis)",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 56
+   },
+   "id": 18,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT 100.0*sum(CASE WHEN e.eur_mwh > (SELECT avg(eur_mwh) FROM prices WHERE series='DAA' AND $__timeFilter(ts)) THEN e.mwh ELSE 0 END)\n       / NULLIF(sum(e.mwh),0) AS value\nFROM v_erloes e WHERE $__timeFilter(e.ts)",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value"
+   }
+  },
+  {
+   "title": "Prognosegüte: Ø-Abweichung DAA (€/MWh)",
+   "type": "stat",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 56
+   },
+   "id": 19,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT avg(abs(a.eur_mwh-f.eur_mwh)) AS value\nFROM prices a JOIN prices f ON a.ts=f.ts AND f.series='FORECAST_DAA'\nWHERE a.series='DAA' AND $__timeFilter(a.ts)",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "none"
+   }
+  },
+  {
+   "title": "Erlös & €/MWh je Motor (Zeitraum)",
+   "type": "table",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 60
+   },
+   "id": 20,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT name AS \"Motor\",\n       round(sum(CASE WHEN kw>0 THEN 0.25 ELSE 0 END)::numeric,1) AS \"Stunden\",\n       round(sum(mwh)::numeric,2) AS \"MWh\",\n       round(coalesce(sum(erloes_eur),0)::numeric,2) AS \"Erlös €\",\n       round((coalesce(sum(erloes_eur),0)/NULLIF(sum(mwh),0))::numeric,2) AS \"€/MWh\"\nFROM v_erloes WHERE $__timeFilter(ts)\nGROUP BY name ORDER BY \"Erlös €\" DESC",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "title": "Ø DAA-Preis: Stunde × Wochentag (€/MWh)",
+   "type": "table",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 13,
+    "w": 12,
+    "x": 0,
+    "y": 68
+   },
+   "id": 21,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT lpad(h::text,2,'0') AS \"Stunde\",\n  round(avg(CASE WHEN dow=1 THEN p END)::numeric,0) AS \"Mo\",\n  round(avg(CASE WHEN dow=2 THEN p END)::numeric,0) AS \"Di\",\n  round(avg(CASE WHEN dow=3 THEN p END)::numeric,0) AS \"Mi\",\n  round(avg(CASE WHEN dow=4 THEN p END)::numeric,0) AS \"Do\",\n  round(avg(CASE WHEN dow=5 THEN p END)::numeric,0) AS \"Fr\",\n  round(avg(CASE WHEN dow=6 THEN p END)::numeric,0) AS \"Sa\",\n  round(avg(CASE WHEN dow=0 THEN p END)::numeric,0) AS \"So\"\nFROM (\n  SELECT extract(hour from ts AT TIME ZONE 'Europe/Berlin')::int AS h,\n         extract(dow  from ts AT TIME ZONE 'Europe/Berlin')::int AS dow,\n         eur_mwh AS p\n  FROM prices WHERE series='DAA' AND $__timeFilter(ts)\n) t GROUP BY h ORDER BY h",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR",
+     "color": {
+      "mode": "continuous-GrYlRd"
+     },
+     "custom": {
+      "cellOptions": {
+       "type": "color-background",
+       "mode": "gradient"
+      },
+      "align": "center"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Stunde"
+      },
+      "properties": [
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "auto"
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "title": "Tages-Preisprofil: Ø DAA je Stunde (€/MWh)",
+   "type": "barchart",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 12,
+    "x": 12,
+    "y": 68
+   },
+   "id": 22,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawSql": "SELECT lpad(h::text,2,'0') AS \"Stunde\", val AS \"Ø DAA €/MWh\" FROM (\n  SELECT extract(hour from ts AT TIME ZONE 'Europe/Berlin')::int AS h,\n         round(avg(eur_mwh)::numeric,1) AS val\n  FROM prices WHERE series='DAA' AND $__timeFilter(ts) GROUP BY 1\n) t ORDER BY h",
+     "rawQuery": true
+    }
+   ],
+   "options": {
+    "xField": "Stunde",
+    "orientation": "auto",
+    "showValue": "auto",
+    "stacking": "none",
+    "legend": {
+     "showLegend": false
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR",
+     "custom": {
+      "fillOpacity": 85
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Stunden mit negativem DAA-Preis pro Tag",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 12,
+    "x": 12,
+    "y": 74
+   },
+   "id": 23,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT date_trunc('day', ts) AS time,\n       sum(CASE WHEN eur_mwh<0 THEN 0.25 ELSE 0 END) AS \"Std < 0 €/MWh\"\nFROM prices WHERE series='DAA' AND $__timeFilter(ts) GROUP BY 1 ORDER BY 1",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "h",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Spread IDA − DAA (€/MWh)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 7,
+    "w": 12,
+    "x": 0,
+    "y": 80
+   },
+   "id": 24,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT a.ts AS time, (i.eur_mwh - a.eur_mwh) AS \"IDA − DAA\"\nFROM prices a JOIN prices i ON a.ts=i.ts AND i.series='IDA'\nWHERE a.series='DAA' AND $__timeFilter(a.ts) ORDER BY a.ts",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineInterpolation": "stepAfter"
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "title": "Prognosegüte: DAA vs. Prognose",
+   "type": "timeseries",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 7,
+    "w": 12,
+    "x": 12,
+    "y": 80
+   },
+   "id": 25,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawSql": "SELECT ts AS time, series AS metric, eur_mwh AS value\nFROM prices WHERE series IN ('DAA','FORECAST_DAA') AND $__timeFilter(ts) ORDER BY ts",
+     "rawQuery": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyEUR",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 8,
+      "lineInterpolation": "stepAfter"
+     }
+    },
+    "overrides": []
    }
   }
  ]
