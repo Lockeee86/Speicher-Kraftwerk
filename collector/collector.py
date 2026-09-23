@@ -73,6 +73,13 @@ CHUNK_PAUSE_SEC = float(os.environ.get("CHUNK_PAUSE_SEC", "0.5"))
 # Nach abgeschlossenem Backfill wieder leeren, damit der normale Betrieb greift.
 BACKFILL_FROM = os.environ.get("SKVE_BACKFILL_FROM", "").strip()
 
+# Gasspeicher: Anlagen-ID für /module/gas-storage/{id}/gas-storages.
+# Leer = Gasspeicher-Erfassung deaktiviert.
+GAS_STORAGE_ID = os.environ.get("SKVE_GAS_STORAGE_ID", "").strip()
+# Wie viele Tage Vergangenheit im Normalbetrieb je Lauf mitgezogen werden
+# (der Füllstand-Verlauf enthält auch eine Prognose voraus – daher rollierend).
+GAS_LOOKBACK_DAYS = int(os.environ.get("GAS_LOOKBACK_DAYS", "3"))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
@@ -156,6 +163,15 @@ CREATE TABLE IF NOT EXISTS ingest_state (
     last_run      TIMESTAMPTZ,
     last_status   TEXT
 );
+
+-- Gasspeicher-Füllstand (%). is_forecast: true = Prognosewert (Zukunft).
+CREATE TABLE IF NOT EXISTS gas_storage (
+    ts          TIMESTAMPTZ NOT NULL,
+    level_pct   DOUBLE PRECISION,
+    is_forecast BOOLEAN     NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (ts)
+);
+SELECT create_hypertable('gas_storage', 'ts', if_not_exists => TRUE);
 
 CREATE OR REPLACE VIEW v_erloes AS
 SELECT
@@ -319,6 +335,33 @@ def upsert_chp(cur, chp_id: int, rows):
     return len(data), max(d[0] for d in data)
 
 
+def extract_gas_series(payload: dict):
+    """Füllstand (%) aus timeSeries.customer_view (Ist + Prognose voraus)."""
+    cv = (payload.get("timeSeries") or {}).get("customer_view") or {}
+    times = cv.get("timestamps") or []
+    vals = cv.get("values") or []
+    return list(zip(times, vals))
+
+
+def upsert_gas(cur, rows):
+    if not rows:
+        return 0, None
+    now = now_utc()
+    data = [
+        (datetime.fromtimestamp(t, timezone.utc), v,
+         datetime.fromtimestamp(t, timezone.utc) > now)
+        for t, v in rows
+    ]
+    execute_values(
+        cur,
+        "INSERT INTO gas_storage (ts, level_pct, is_forecast) VALUES %s "
+        "ON CONFLICT (ts) DO UPDATE SET level_pct = EXCLUDED.level_pct, "
+        "is_forecast = EXCLUDED.is_forecast",
+        data,
+    )
+    return len(data), max(d[0] for d in data)
+
+
 # --------------------------------------------------------------------------- #
 # Ein Stream, chunk-weise geladen (fortsetzbar)
 # --------------------------------------------------------------------------- #
@@ -348,6 +391,38 @@ def fetch_stream(conn, cur, stream, path, upsert_fn, label):
                      label, i + 1, len(chunks), cs.date(), ce.date(), n)
             if CHUNK_PAUSE_SEC and i < len(chunks) - 1:
                 time.sleep(CHUNK_PAUSE_SEC)
+    return total, last_overall
+
+
+def fetch_gas_storage(conn, cur):
+    """Gasspeicher-Füllstand rollierend laden (Ist + Prognose-Kurve).
+
+    Bewusst ohne last_ts-Fenster: die Kurve enthält eine Prognose voraus; ein
+    fortgeschrittenes last_ts würde den nächsten Lauf ins Leere schieben.
+    Stattdessen festes Fenster [now - GAS_LOOKBACK_DAYS, now + horizon] (bzw. ab
+    BACKFILL_FROM). Idempotenter UPSERT, daher gefahrlos wiederholbar.
+    """
+    stream = "gas:storage"
+    end = now_utc() + timedelta(days=FUTURE_HORIZON_DAYS)
+    if BACKFILL_FROM:
+        start = datetime.fromisoformat(BACKFILL_FROM).replace(tzinfo=timezone.utc)
+    else:
+        start = now_utc() - timedelta(days=GAS_LOOKBACK_DAYS)
+    path = f"/module/gas-storage/{GAS_STORAGE_ID}/gas-storages"
+    total = 0
+    last_overall = None
+    chunks = list(daterange_chunks(start, end, MAX_CHUNK_DAYS))
+    for i, (cs, ce) in enumerate(chunks):
+        payload = api_get(path, cs, ce)
+        rows = extract_gas_series(payload)
+        n, last = upsert_gas(cur, rows)
+        total += n
+        if last and (last_overall is None or last > last_overall):
+            last_overall = last
+        set_state(cur, stream, last_overall, "ok")
+        conn.commit()
+        if len(chunks) > 1 and CHUNK_PAUSE_SEC and i < len(chunks) - 1:
+            time.sleep(CHUNK_PAUSE_SEC)
     return total, last_overall
 
 
@@ -408,6 +483,18 @@ def run_once(conn):
             with conn.cursor() as c2:
                 set_state(c2, stream, None, str(e)[:200]); conn.commit()
             log.error("Fahrplan %d fehlgeschlagen: %s", chp_id, e)
+
+    # 4) Gasspeicher-Füllstand (optional, nur wenn SKVE_GAS_STORAGE_ID gesetzt)
+    if GAS_STORAGE_ID:
+        try:
+            n, last = fetch_gas_storage(conn, cur)
+            log.info("Gasspeicher: %5d Werte (bis %s)", n,
+                     last.isoformat() if last else "—")
+        except Exception as e:
+            conn.rollback()
+            with conn.cursor() as c2:
+                set_state(c2, "gas:storage", None, str(e)[:200]); conn.commit()
+            log.error("Gasspeicher fehlgeschlagen: %s", e)
 
     cur.close()
 
