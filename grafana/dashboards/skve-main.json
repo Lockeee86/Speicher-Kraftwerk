@@ -7,7 +7,7 @@
  ],
  "timezone": "browser",
  "schemaVersion": 39,
- "version": 3,
+ "version": 4,
  "refresh": "30m",
  "time": {
   "from": "now-7d",
@@ -442,7 +442,7 @@
    }
   },
   {
-   "title": "Laufzeit je Motor (Stunden/Tag, gestapelt)",
+   "title": "Erzeugung je Motor (MWh/Tag, gestapelt)",
    "type": "timeseries",
    "datasource": {
     "type": "postgres",
@@ -463,13 +463,13 @@
       "uid": "skve-tsdb"
      },
      "format": "time_series",
-     "rawSql": "SELECT date_trunc('day', s.ts) AS time, m.name AS metric,\n       sum(CASE WHEN s.kw > 0 THEN 0.25 ELSE 0 END) AS value\nFROM chp_schedule s\nJOIN chp_master m ON m.chp_id = s.chp_id\nWHERE $__timeFilter(s.ts)\nGROUP BY 1, 2\nORDER BY 1",
+     "rawSql": "SELECT date_trunc('day', s.ts) AS time, m.name AS metric,\n       sum(s.kw) * 0.25 / 1000.0 AS value\nFROM chp_schedule s JOIN chp_master m ON m.chp_id=s.chp_id\nWHERE $__timeFilter(s.ts)\nGROUP BY 1,2 ORDER BY 1",
      "rawQuery": true
     }
    ],
    "fieldConfig": {
     "defaults": {
-     "unit": "h",
+     "unit": "MWh",
      "custom": {
       "drawStyle": "bars",
       "stacking": {
