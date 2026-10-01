@@ -7,7 +7,7 @@
  ],
  "timezone": "browser",
  "schemaVersion": 39,
- "version": 6,
+ "version": 7,
  "refresh": "30m",
  "time": {
   "from": "now-7d",
@@ -280,6 +280,26 @@
      "format": "time_series",
      "rawSql": "SELECT s.ts AS time, m.name AS metric, s.kw AS value\nFROM chp_schedule s JOIN chp_master m ON m.chp_id=s.chp_id\nWHERE s.ts > now() - interval '3 days' AND $__timeFilter(s.ts)\nORDER BY s.ts",
      "rawQuery": true
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "rawSql": "SELECT ts AS time, 'DAA €/MWh' AS metric, eur_mwh AS value\nFROM prices WHERE series='DAA' AND $__timeFilter(ts) ORDER BY ts"
+    },
+    {
+     "refId": "C",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "time_series",
+     "rawQuery": true,
+     "rawSql": "SELECT ts AS time, 'Prognose DAA €/MWh' AS metric, eur_mwh AS value\nFROM prices WHERE series='FORECAST_DAA' AND $__timeFilter(ts) ORDER BY ts"
     }
    ],
    "fieldConfig": {
@@ -289,10 +309,108 @@
       "drawStyle": "line",
       "lineInterpolation": "stepAfter",
       "fillOpacity": 10,
-      "spanNulls": true
+      "spanNulls": true,
+      "axisLabel": "kW"
      }
     },
-    "overrides": []
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "DAA €/MWh"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "currencyEUR"
+       },
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.axisLabel",
+        "value": "€/MWh"
+       },
+       {
+        "id": "custom.drawStyle",
+        "value": "line"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.spanNulls",
+        "value": true
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Prognose DAA €/MWh"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "currencyEUR"
+       },
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "custom.axisLabel",
+        "value": "€/MWh"
+       },
+       {
+        "id": "custom.drawStyle",
+        "value": "line"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.spanNulls",
+        "value": true
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "super-light-yellow"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          8,
+          4
+         ]
+        }
+       }
+      ]
+     }
+    ]
    }
   },
   {
