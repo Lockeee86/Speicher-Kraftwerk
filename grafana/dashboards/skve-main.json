@@ -7,7 +7,7 @@
  ],
  "timezone": "browser",
  "schemaVersion": 39,
- "version": 7,
+ "version": 8,
  "refresh": "30m",
  "time": {
   "from": "now-7d",
@@ -1221,6 +1221,78 @@
      }
     },
     "overrides": []
+   }
+  },
+  {
+   "title": "Nächster geplanter Start je Motor",
+   "type": "table",
+   "datasource": {
+    "type": "postgres",
+    "uid": "skve-tsdb"
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 24,
+    "x": 0,
+    "y": 87
+   },
+   "id": 26,
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "postgres",
+      "uid": "skve-tsdb"
+     },
+     "format": "table",
+     "rawQuery": true,
+     "rawSql": "WITH sched AS (\n  SELECT m.name, m.chp_id, s.ts, s.kw,\n         lag(s.kw) OVER (PARTITION BY s.chp_id ORDER BY s.ts) AS prev_kw\n  FROM chp_schedule s JOIN chp_master m ON m.chp_id=s.chp_id\n),\nnextstart AS (\n  SELECT name, min(ts) AS next_start FROM sched\n  WHERE ts > now() AND kw > 0 AND (prev_kw IS NULL OR prev_kw = 0)\n  GROUP BY name\n),\nrunningnow AS (\n  SELECT DISTINCT ON (name) name, kw AS kw_now\n  FROM sched WHERE ts <= now() ORDER BY name, ts DESC\n)\nSELECT m.name AS \"Motor\",\n       CASE WHEN coalesce(r.kw_now,0) > 0 THEN '🟢 läuft' ELSE '⚪ aus' END AS \"Status\",\n       n.next_start AS \"Nächster Start\",\n       round((EXTRACT(EPOCH FROM (n.next_start - now()))/3600)::numeric,1) AS \"in (h)\",\n       round(ns.kw::numeric,0) AS \"geplant kW\"\nFROM chp_master m\nLEFT JOIN runningnow r ON r.name=m.name\nLEFT JOIN nextstart n ON n.name=m.name\nLEFT JOIN sched ns ON ns.name=m.name AND ns.ts=n.next_start\nORDER BY n.next_start NULLS LAST"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Nächster Start"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "dateTimeAsIso"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "in (h)"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "h"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "geplant kW"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "kwatt"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "md"
    }
   }
  ]
